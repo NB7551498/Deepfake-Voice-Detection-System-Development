@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deepfake-voice-detector"
+version = "0.1.0"
+description = "End-to-end ML system for detecting deepfake voice and synthetic speech"
+readme = "README.md"
+authors = [{ name = "ML Engineer" }]
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "torchvision>=0.15.0",
+    "librosa>=0.10.0",
+    "transformers>=4.30.0",
+    "numpy>=1.22.0",
+    "scikit-learn>=1.2.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "python-multipart>=0.0.6",
+    "pydantic>=2.0.0",
+    "audiomentations>=0.30.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "pyyaml>=6.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0",
+    "flake8>=4.0.0",
+    "jupyter>=1.0.0"
+]

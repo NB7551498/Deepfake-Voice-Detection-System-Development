@@ -1,0 +1,21 @@
+audio:
+  sample_rate: 16000
+  channels: 1
+  chunk_length_s: 3.0
+  overlap_s: 1.0
+
+training:
+  batch_size: 32
+  learning_rate: 0.0001
+  epochs: 50
+  early_stopping_patience: 5
+
+model:
+  ssl_model_name: "facebook/wav2vec2-base"
+  cnn_filters: [16, 32, 64, 128]
+  use_ensemble: true
+
+data:
+  train_dir: "data/processed/train"
+  val_dir: "data/processed/validation"
+  test_dir: "data/processed/test"

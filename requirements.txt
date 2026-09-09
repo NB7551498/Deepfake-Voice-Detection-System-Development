@@ -1,0 +1,14 @@
+torch>=2.0.0
+torchaudio>=2.0.0
+torchvision>=0.15.0
+librosa>=0.10.0
+transformers>=4.30.0
+numpy>=1.22.0
+scikit-learn>=1.2.0
+fastapi>=0.100.0
+uvicorn>=0.23.0
+python-multipart>=0.0.6
+pydantic>=2.0.0
+audiomentations>=0.30.0
+matplotlib>=3.7.0
+seaborn>=0.12.0

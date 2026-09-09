@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.env
+.venv/
+venv/
+env/
+
+# Data (large files - add your own datasets)
+data/raw/
+data/interim/
+data/processed/train/
+data/processed/validation/
+data/processed/test/
+
+# Models (large binary files)
+models/checkpoints/
+models/exported/
+
+# Reports
+reports/figures/*.png
+reports/figures/*.jpg
+
+# Node
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+
+# Env
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
