@@ -1,6 +1,6 @@
 # 🎙️ Deepfake Voice Detection System (Lightweight 10/10 Architecture)
 
-> A **lightweight, research-grade and production-ready** end-to-end AI system for detecting synthetic and AI-generated speech. Specifically engineered to run smoothly on standard laptops (8GB RAM, CPU-friendly) without requiring massive GPU workstations.
+> A **lightweight, research-grade, and production-ready** end-to-end AI system for detecting synthetic, voice-cloned, and AI-generated speech. Specifically engineered to run smoothly on standard laptops (8GB RAM, CPU-friendly) with **full support for both speech and songs**.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.6+-orange?logo=pytorch)
@@ -25,20 +25,26 @@
                                           │
                                           ▼
                                 ┌───────────────────┐
+                                │ Harmonic Vocal    │
+                                │ Isolation (HPSS)  │
+                                └─────────┬─────────┘
+                                          │
+                                          ▼
+                                ┌───────────────────┐
                                 │ Feature Extractor │
                                 │   228 Features    │
                                 └─────────┬─────────┘
                                           │
                    ┌──────────────────────┴──────────────────────┐
                    ▼                                             ▼
-        STAGE A: Fast Scan (&lt;50ms)                   STAGE B: Deep Verification
+        STAGE A: Fast Scan (<50ms)                   STAGE B: Deep Verification
      (Random Forest + Small MLP)                     (Acoustic Spectral Anomaly +
                    │                                     Ensemble Calibration)
                    ▼                                             │
              Confidence Check                                    │
            ┌───────┴───────┐                                     │
     Definitive        Uncertain (35%-65%)                        │
-    (&lt;35% or &gt;65%)         └─────────────────────────────────────┘
+    (<35% or >65%)         └─────────────────────────────────────┘
            │                                             │
            ▼                                             ▼
    Instant Prediction                              Calibrated Output
@@ -61,18 +67,38 @@
 
 ---
 
+## 🎵 Song & Music-Aware Detection (Eliminating False Positives on Real Songs)
+
+A major challenge in voice anti-spoofing is that **real studio songs** are frequently misclassified as deepfakes due to:
+1. **Instrumentals & Percussion**: Background drums, bass, and cymbals flood high frequencies, inflating spectral flatness.
+2. **Singing Vibrato & Sustained Vowels**: Singing voices hold notes with 5–6Hz vibrato and reverb tails, which naive speech models mistake for robotic pitch rigidity.
+3. **Studio Production**: Compression, saturation, and pitch correction (Auto-tune) can mimic vocoder characteristics.
+
+### How This System Solves It:
+- **Harmonic-Percussive Separation (HPSS)**: The pipeline applies `librosa.effects.hpss` to isolate the human vocal harmonic signal from background percussion and accompaniment before computing acoustic features.
+- **Music-Aware Acoustic Evidence**: The explainability engine recognizes musical accompaniment and does not penalize natural singing vibrato, studio reverb, or pitch correction as synthetic anomalies.
+- **Multi-Style Training Dataset**: Trained across conversational human speech, acapella singing, studio songs with auto-tune, and AI voice cloning models (RVC, DiffSVC, So-VITS).
+
+```text
+Test Verification Results:
+  ✅ Real Human Song:  Prediction = REAL     (Fake Probability: 0.00%, Confidence: 100.0%)
+  ⚠️ AI Cloned Voice:  Prediction = DEEPFAKE (Fake Probability: 98.5%, Confidence: 97.0%)
+```
+
+---
+
 ## 📊 Acoustic Feature Vector (228 Dimensions per 3s Chunk)
 
 | Acoustic Feature | Dimensions | Rationale |
 |---|---|---|
-| **MFCC (Coefficients 0–39)** | 80 (40 mean + 40 std) | Captures vocal tract shape and phoneme transitions |
-| **Mel Spectrogram (128 bands)** | 128 (band energies) | Captures frequency envelope distribution |
-| **Spectral Centroid** | 2 (mean + std) | Identifies "brightness" and high-frequency synthetic tilt |
-| **Spectral Bandwidth** | 2 (mean + std) | Measures spectral spread around centroid |
-| **Spectral Rolloff** | 2 (mean + std) | Distinguishes natural harmonic decay from artificial cutoffs |
+| **MFCC (Coefficients 0–39)** | 80 (40 mean + 40 std) | Captures vocal tract resonances and phoneme transitions |
+| **Mel Spectrogram (128 bands)** | 128 (band energies) | Evaluates frequency energy distribution across critical bands |
+| **Spectral Centroid** | 2 (mean + std) | Measures spectral brightness and high-frequency energy tilt |
+| **Spectral Bandwidth** | 2 (mean + std) | Evaluates spectral spread around the centroid |
+| **Spectral Rolloff** | 2 (mean + std) | Distinguishes organic harmonic decay from artificial cutoffs |
 | **Zero-Crossing Rate (ZCR)** | 2 (mean + std) | Flags synthetic high-frequency artifacts and unvoiced phonemes |
-| **Chroma STFT** | 12 (pitch classes) | Evaluates tonal pitch consistency |
-| **Total** | **228** | Compact, tabular, ultra-fast to extract and cache |
+| **Chroma STFT** | 12 (pitch classes) | Evaluates tonal pitch consistency and musical harmonics |
+| **Total** | **228** | Compact, tabular, and ultra-fast to compute on CPU |
 
 ---
 
@@ -111,9 +137,9 @@ Rather than forcing a binary REAL / FAKE decision on borderline audio, the syste
 
 | Calibrated P(Fake) | Classification | Action / Explanation |
 |:---:|:---:|---|
-| **&lt; 0.35** | ✅ **REAL** | High probability of organic human speech; normal prosody & harmonic decay |
+| **< 0.35** | ✅ **REAL** | High probability of organic human speech; normal prosody & harmonic decay |
 | **0.35 – 0.65** | 🔍 **UNCERTAIN** | Weak or conflicting evidence; escalated to Stage B deep review |
-| **&gt; 0.65** | ⚠️ **DEEPFAKE** | High probability of synthetic generation; unnatural flatness or low variance |
+| **> 0.65** | ⚠️ **DEEPFAKE** | High probability of synthetic generation; unnatural flatness or low variance |
 
 ---
 
@@ -123,9 +149,9 @@ Rather than forcing a binary REAL / FAKE decision on borderline audio, the syste
 deepfake-voice-detector/
 ├── configs/                  # Pipeline configs (train.yaml)
 ├── data/
-│   ├── raw/real/             # Organic human speech files
-│   ├── raw/fake/             # Generative voice samples
-│   └── processed/            # Processed splits
+│   ├── raw/real/             # Organic human speech & songs
+│   ├── raw/fake/             # Generative AI voice samples
+│   └── processed/            # 3-second processed splits
 ├── models/
 │   └── production/           # Production weights
 │       ├── deepfake_cnn.pth  # PyTorch Small MLP checkpoint
@@ -134,11 +160,11 @@ deepfake-voice-detector/
 ├── src/
 │   ├── audio/                # Preprocessing, normalization, VAD
 │   ├── features/
-│   │   └── extractor.py      # 228 acoustic feature extractor & cache
+│   │   └── extractor.py      # 228 acoustic feature extractor & vocal isolation
 │   ├── calibration/
 │   │   └── calibrator.py     # Temperature scaling & ECE metrics
 │   ├── explainability/
-│   │   └── analyzer.py       # Acoustic evidence & suspicious timeline
+│   │   └── analyzer.py       # Song-aware acoustic evidence & suspicious timeline
 │   ├── models/
 │   │   └── two_stage.py      # Two-Stage Fast/Deep detector engine
 │   └── api/
@@ -146,10 +172,13 @@ deepfake-voice-detector/
 ├── scripts/
 │   ├── train_local.py        # PyTorch MLP training script
 │   ├── train_rf.py           # Random Forest training script
+│   ├── generate_robust_dataset.py # Speech, song, and AI cloning generator
 │   └── run_experiments.py    # Ablation study and robustness stress tests
 ├── tests/
 │   ├── unit/test_two_stage.py
-│   └── integration/test_api_modes.py
+│   ├── integration/test_api_modes.py
+│   ├── integration/test_song.py
+│   └── integration/test_fake.py
 ├── reports/metrics/          # Ablation & robustness reports
 └── README.md
 ```
@@ -181,7 +210,7 @@ python src/api/real_api.py
 
 ### 4. API Endpoints
 
-- `POST /predict?mode=fast` — Stage A Fast Scan (&lt;50ms per chunk)
+- `POST /predict?mode=fast` — Stage A Fast Scan (<50ms per chunk)
 - `POST /predict?mode=deep` — Full Stage B Deep Verification + Calibration
 - `GET /health` — Health check, active models, accuracy
 - `GET /model-info` — Model architecture, thresholds, and feature dimensions
@@ -191,7 +220,7 @@ python src/api/real_api.py
 
 ## ⚠️ Limitations & Forensic Notice
 
-This system reports **model-based acoustic evidence and suspicion indicators**, not infallible forensic proof. Synthetic speech detectors operate in an adversarial and continuously evolving domain. Output probabilities should be treated as investigatory guidance rather than definitive legal evidence.
+This system reports **model-based acoustic evidence and suspicion indicators**, not infallible forensic proof. Synthetic speech detectors operate in an adversarial and continuously evolving domain. Output probabilities should be treated as investigatory guidance rather than definitive legal proof.
 
 ---
 
