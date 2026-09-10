@@ -1,0 +1,12 @@
+[
+  {
+    "model_name": "DeepfakeFusion-v2.0",
+    "version": "2.0.0",
+    "backbone": "Hybrid (228 Acoustic Features + 768 Frozen SSL)",
+    "accuracy_val": 100.0,
+    "checkpoint_path": "models\\production\\fusion_v2.pth",
+    "status": "production_active",
+    "trained_on": "Robust Multi-Style Speech + Song Dataset",
+    "created_at": "2026-09-10T16:55:52Z"
+  }
+]

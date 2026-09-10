@@ -1,0 +1,52 @@
+name: Deepfake Voice Detector 2.0 CI/CD
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest flake8 bandit
+
+      - name: Code Quality & Linting
+        run: |
+          # Stop build on syntax errors or undefined names
+          flake8 src/ scripts/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Warning check for complexity
+          flake8 src/ scripts/ --count --exit-zero --max-complexity=15 --max-line-length=127 --statistics
+
+      - name: Security Scan (SAST with Bandit)
+        run: |
+          bandit -r src/ -ll -x tests/ || true
+
+      - name: Run Unit Tests
+        run: |
+          python tests/unit/test_detector_v2.py
+
+      - name: Verify Benchmark Manifests
+        run: |
+          python src/data/benchmark_splitter.py
+          python scripts/run_cross_benchmark_eval.py
