@@ -17,6 +17,8 @@ import librosa
 import numpy as np
 import sys
 import uvicorn
+import os
+import tempfile
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Query, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,6 +37,30 @@ from src.api.url_downloader import download_audio_from_url
 class UrlPredictRequest(BaseModel):
     url: str
     mode: str = "fast"
+
+
+def safely_decode_audio(audio_bytes: bytes, filename: str = "audio.wav") -> np.ndarray:
+    try:
+        audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
+        audio, _ = librosa.effects.trim(audio, top_db=30)
+        return audio
+    except Exception:
+        suffix = Path(filename).suffix or ".wav"
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+        try:
+            with os.fdopen(tmp_fd, "wb") as f:
+                f.write(audio_bytes)
+            audio, sr = librosa.load(tmp_path, sr=16000, mono=True)
+            audio, _ = librosa.effects.trim(audio, top_db=30)
+            return audio
+        except Exception as err:
+            raise HTTPException(status_code=422, detail=f"Audio decoding failure: {str(err)}")
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
 
 # Initialize Two-Stage Detector 2.0
 detector = TwoStageDetector(
@@ -167,11 +193,7 @@ async def predict(
     validate_audio_payload(audio_bytes, file.filename or "audio.wav")
 
     # 3. Safe decoding
-    try:
-        audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
-        audio, _ = librosa.effects.trim(audio, top_db=30)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Audio decoding failure: {str(e)}")
+    audio = safely_decode_audio(audio_bytes, file.filename or "audio.wav")
 
     # 4. Inference
     try:
@@ -214,11 +236,7 @@ async def predict_url(
     validate_audio_payload(audio_bytes, filename)
 
     # 4. Decode
-    try:
-        audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
-        audio, _ = librosa.effects.trim(audio, top_db=30)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Audio decoding failure: {str(e)}")
+    audio = safely_decode_audio(audio_bytes, filename)
 
     # 5. Inference
     try:

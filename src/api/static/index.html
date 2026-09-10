@@ -118,8 +118,22 @@
           </div>
           <input id="audioUrlInput" type="url" placeholder="https://example.com/audio.mp3, YouTube, or SoundCloud link..."
             oninput="handleUrlInput(event)"
+            onpaste="setTimeout(() => handleUrlInput({target: this}), 50)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault(); if(!document.getElementById('analyzeBtn').disabled) runAnalysis();}"
             class="w-full px-4 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm text-[var(--foreground)] placeholder-[var(--muted-foreground)] focus:outline-none focus:border-[var(--primary)] font-mono text-xs">
-          <div class="flex items-center justify-between text-[11px] text-[var(--muted-foreground)]">
+          
+          <!-- Sample URLs -->
+          <div class="flex items-center gap-2 flex-wrap text-xs pt-1">
+            <span class="text-[var(--muted-foreground)] text-[11px]">Quick test:</span>
+            <button type="button" onclick="setSampleUrl('https://raw.githubusercontent.com/Jakobovski/free-spoken-digit-dataset/master/recordings/0_jackson_0.wav')" class="px-2 py-0.5 rounded bg-[var(--card)] hover:bg-[var(--primary)]/10 text-[var(--primary)] border border-[var(--border)] text-[11px] font-mono transition-colors">
+              ▶ Speech Sample 1 (WAV)
+            </button>
+            <button type="button" onclick="setSampleUrl('https://raw.githubusercontent.com/Jakobovski/free-spoken-digit-dataset/master/recordings/1_jackson_1.wav')" class="px-2 py-0.5 rounded bg-[var(--card)] hover:bg-[var(--primary)]/10 text-[var(--primary)] border border-[var(--border)] text-[11px] font-mono transition-colors">
+              ▶ Speech Sample 2 (WAV)
+            </button>
+          </div>
+
+          <div class="flex items-center justify-between text-[11px] text-[var(--muted-foreground)] pt-1 border-t border-[var(--border)]/50">
             <span>Direct Audio (MP3, WAV, M4A, FLAC) or YouTube / SoundCloud</span>
             <span class="text-emerald-500 font-semibold">🔒 SSRF Guard Active</span>
           </div>
@@ -293,9 +307,18 @@
     }
 
     function handleUrlInput(e) {
-      enteredUrl = e.target.value.trim();
+      enteredUrl = (e && e.target && e.target.value) ? e.target.value.trim() : (document.getElementById("audioUrlInput")?.value?.trim() || "");
       const analyzeBtn = document.getElementById("analyzeBtn");
-      analyzeBtn.disabled = !enteredUrl || enteredUrl.length < 8;
+      analyzeBtn.disabled = !enteredUrl || enteredUrl.length < 5;
+      document.getElementById("resultsArea").classList.add("hidden");
+    }
+
+    function setSampleUrl(url) {
+      const inp = document.getElementById("audioUrlInput");
+      inp.value = url;
+      enteredUrl = url;
+      const analyzeBtn = document.getElementById("analyzeBtn");
+      analyzeBtn.disabled = false;
       document.getElementById("resultsArea").classList.add("hidden");
     }
 
@@ -362,12 +385,22 @@
       let data;
       if (apiOnline) {
         if (currentInputTab === "link") {
+          const inpEl = document.getElementById("audioUrlInput");
+          const targetUrl = (inpEl && inpEl.value ? inpEl.value.trim() : enteredUrl);
+          if (!targetUrl || targetUrl.length < 5) {
+            alert("Please enter a valid audio or media URL.");
+            loading.classList.add("hidden");
+            btn.classList.remove("hidden");
+            uploadArea.classList.remove("opacity-50", "pointer-events-none");
+            linkArea.classList.remove("opacity-50", "pointer-events-none");
+            return;
+          }
           loadingText.textContent = "Fetching audio from link & running security scan...";
           try {
             const res = await fetch(`${API_BASE}/predict-url`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: enteredUrl, mode: currentMode })
+              body: JSON.stringify({ url: targetUrl, mode: currentMode })
             });
             if (!res.ok) {
               const err = await res.json();
@@ -411,9 +444,6 @@
       linkArea.classList.remove("opacity-50", "pointer-events-none");
       btn.classList.remove("hidden");
       btn.textContent = "Analyze Another Audio";
-
-      renderResults(data);
-    }
 
       renderResults(data);
     }
