@@ -40,21 +40,38 @@ def analyze_acoustic_evidence(chunk: np.ndarray, sr: int = 16000, fake_prob: flo
     except Exception:
         pitch_std = 0.0
 
+    # Music & Singing Awareness: Check if instrumental/percussive accompaniment is present
+    try:
+        harmonic, percussive = librosa.effects.hpss(chunk, margin=(1.0, 3.0))
+        is_music = np.mean(percussive ** 2) > 0.04 * (np.mean(harmonic ** 2) + 1e-6)
+    except Exception:
+        is_music = False
+
     # Evidence rules
     evidence = []
-    if flatness_mean > 0.12:
-        evidence.append("High spectral flatness (synthetic acoustic uniformity)")
-    if mfcc_var < 5.0:
-        evidence.append("Unnaturally low MFCC variance (smooth cloned phonation)")
-    if 0 < pitch_std < 4.5:
-        evidence.append("Robotic pitch consistency (attenuated prosodic jitter)")
-    if zcr_mean > 0.15:
-        evidence.append("Elevated zero-crossing rate (synthetic high-frequency artifacts)")
+    if is_music:
+        evidence.append("Musical / singing accompaniment detected — vocal harmonics isolated")
+        harm_flatness = float(np.mean(librosa.feature.spectral_flatness(y=harmonic, hop_length=hop)))
+        if harm_flatness > 0.18 and fake_prob > 0.65:
+            evidence.append("High vocal flatness (synthetic vocoder harmonic collapse)")
+        if mfcc_var < 3.0 and fake_prob > 0.65:
+            evidence.append("Unnaturally low vocal variance (voice cloning artifact)")
+    else:
+        if flatness_mean > 0.14 and fake_prob > 0.60:
+            evidence.append("High spectral flatness (synthetic acoustic uniformity)")
+        if mfcc_var < 4.0 and fake_prob > 0.60:
+            evidence.append("Unnaturally low MFCC variance (smooth cloned phonation)")
+        if 0 < pitch_std < 4.0 and fake_prob > 0.60:
+            evidence.append("Robotic pitch consistency (attenuated prosodic jitter)")
+        if zcr_mean > 0.18 and fake_prob > 0.60:
+            evidence.append("Elevated zero-crossing rate (synthetic high-frequency artifacts)")
 
     if not evidence and fake_prob > 0.65:
         evidence.append("Acoustic distribution shifted towards generative synthetic profile")
-    elif not evidence:
+    elif not evidence and fake_prob < 0.35:
         evidence.append("Harmonic distribution consistent with organic human phonation")
+    elif not evidence:
+        evidence.append("Acoustic features in neutral variance zone")
 
     severity = "HIGH" if fake_prob > 0.70 else "MEDIUM" if fake_prob >= 0.35 else "LOW"
 

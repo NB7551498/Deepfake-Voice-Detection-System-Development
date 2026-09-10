@@ -138,16 +138,8 @@ class TwoStageDetector:
 
         if should_run_deep:
             stage_used = "Stage A + Stage B (Deep Verification)" if is_uncertain else "Stage B (Deep Scan)"
-            # Deep verification incorporates acoustic feature checks and calibration
-            adjusted_probs = []
-            for ch, p in zip(chunks, raw_probs):
-                ev = analyze_acoustic_evidence(ch, sr=sr, fake_prob=float(p))
-                # Acoustic verification adjustment
-                flatness_penalty = 0.05 if ev["spectral_flatness"] > 0.10 else 0.0
-                mfcc_penalty = 0.05 if ev["mfcc_variance"] < 4.0 else 0.0
-                adjusted_p = float(np.clip(p + flatness_penalty + mfcc_penalty, 0.0, 1.0))
-                adjusted_probs.append(self.calibrator.calibrate(adjusted_p))
-            final_probs = np.array(adjusted_probs, dtype=np.float32)
+            # Deep verification runs probability calibration across chunks
+            final_probs = np.array([self.calibrator.calibrate(float(p)) for p in raw_probs], dtype=np.float32)
         else:
             final_probs = np.array([self.calibrator.calibrate(float(p)) for p in raw_probs], dtype=np.float32)
 

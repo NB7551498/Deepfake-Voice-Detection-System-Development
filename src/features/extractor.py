@@ -36,40 +36,53 @@ def extract_chunk_features(chunk: np.ndarray, sr: int = SAMPLE_RATE) -> np.ndarr
     else:
         chunk = chunk[:CHUNK_SAMPLES]
 
+    # Harmonic Vocal Isolation: If music or drums are present, extract vocal harmonics
+    try:
+        harmonic, percussive = librosa.effects.hpss(chunk, margin=(1.0, 3.0))
+        perc_energy = np.mean(percussive ** 2)
+        harm_energy = np.mean(harmonic ** 2)
+        if perc_energy > 0.04 * (harm_energy + 1e-6):
+            # Song/music accompaniment detected: filter backing percussion so vocals are clean
+            proc_chunk = 0.85 * harmonic + 0.15 * chunk
+        else:
+            proc_chunk = chunk
+    except Exception:
+        proc_chunk = chunk
+
     feats = []
 
     # 1. MFCC (mean & std) -> 80 dims
-    mfcc = librosa.feature.mfcc(y=chunk, sr=sr, n_mfcc=N_MFCC, n_fft=N_FFT, hop_length=HOP_LENGTH)
+    mfcc = librosa.feature.mfcc(y=proc_chunk, sr=sr, n_mfcc=N_MFCC, n_fft=N_FFT, hop_length=HOP_LENGTH)
     feats.extend(np.mean(mfcc, axis=1))
     feats.extend(np.std(mfcc, axis=1))
 
     # 2. Mel Spectrogram (mean log power) -> 128 dims
-    mel = librosa.feature.melspectrogram(y=chunk, sr=sr, n_mels=N_MELS, n_fft=N_FFT, hop_length=HOP_LENGTH)
+    mel = librosa.feature.melspectrogram(y=proc_chunk, sr=sr, n_mels=N_MELS, n_fft=N_FFT, hop_length=HOP_LENGTH)
     mel_db = librosa.power_to_db(mel, ref=np.max)
     feats.extend(np.mean(mel_db, axis=1))
 
     # 3. Spectral Centroid -> 2 dims
-    cent = librosa.feature.spectral_centroid(y=chunk, sr=sr, hop_length=HOP_LENGTH)
+    cent = librosa.feature.spectral_centroid(y=proc_chunk, sr=sr, hop_length=HOP_LENGTH)
     feats.append(float(np.mean(cent)))
     feats.append(float(np.std(cent)))
 
     # 4. Spectral Bandwidth -> 2 dims
-    bw = librosa.feature.spectral_bandwidth(y=chunk, sr=sr, hop_length=HOP_LENGTH)
+    bw = librosa.feature.spectral_bandwidth(y=proc_chunk, sr=sr, hop_length=HOP_LENGTH)
     feats.append(float(np.mean(bw)))
     feats.append(float(np.std(bw)))
 
     # 5. Spectral Rolloff -> 2 dims
-    rolloff = librosa.feature.spectral_rolloff(y=chunk, sr=sr, hop_length=HOP_LENGTH)
+    rolloff = librosa.feature.spectral_rolloff(y=proc_chunk, sr=sr, hop_length=HOP_LENGTH)
     feats.append(float(np.mean(rolloff)))
     feats.append(float(np.std(rolloff)))
 
     # 6. Zero-Crossing Rate -> 2 dims
-    zcr = librosa.feature.zero_crossing_rate(chunk, hop_length=HOP_LENGTH)
+    zcr = librosa.feature.zero_crossing_rate(proc_chunk, hop_length=HOP_LENGTH)
     feats.append(float(np.mean(zcr)))
     feats.append(float(np.std(zcr)))
 
     # 7. Chroma STFT -> 12 dims
-    chroma = librosa.feature.chroma_stft(y=chunk, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH)
+    chroma = librosa.feature.chroma_stft(y=proc_chunk, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH)
     feats.extend(np.mean(chroma, axis=1))
 
     return np.array(feats, dtype=np.float32)
