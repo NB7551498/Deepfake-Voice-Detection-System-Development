@@ -20,6 +20,7 @@ import uvicorn
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Query, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, FileResponse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
@@ -73,6 +74,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+DASHBOARD_HTML = Path(__file__).resolve().parent / "static" / "index.html"
+
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+    if DASHBOARD_HTML.exists():
+        return FileResponse(DASHBOARD_HTML)
+    return HTMLResponse("<h2>Deepfake Voice Detector 2.0 API is running.</h2>")
 
 
 @app.get("/health")
