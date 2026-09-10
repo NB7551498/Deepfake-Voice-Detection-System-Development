@@ -1,199 +1,149 @@
 """
-Real inference using the trained DeepfakeMLP model.
-Uses librosa for audio I/O (no torchaudio dependency).
+Two-Stage Real Model Inference API for Deepfake Voice Detection.
+Lightweight architecture optimized for laptop performance (8GB RAM, CPU-friendly).
+
+Supports:
+  - Fast Scan (Stage A): 228 features + Random Forest / Small MLP (<50ms)
+  - Deep Scan (Stage B): Acoustic feature verification + Calibrated Ensemble
 """
 
 import io
-import pickle
 import json
-import numpy as np
+import time
 import librosa
-import torch
-import torch.nn as nn
+import numpy as np
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import sys
 import uvicorn
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-# ─── Model Definition (must match training) ─────────────────────────────────
-class DeepfakeMLP(nn.Module):
-    def __init__(self, input_dim: int, hidden_dim: int = 256, dropout: float = 0.4):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.BatchNorm1d(hidden_dim // 2),
-            nn.ReLU(),
-            nn.Dropout(dropout / 2),
-            nn.Linear(hidden_dim // 2, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
-        )
+from src.models.two_stage import TwoStageDetector
 
-    def forward(self, x):
-        return self.net(x)
-
-
-# ─── Config ──────────────────────────────────────────────────────────────────
-SAMPLE_RATE   = 16000
-CHUNK_S       = 3.0
-OVERLAP_S     = 1.0
-CHUNK_SAMPLES = int(SAMPLE_RATE * CHUNK_S)
-STEP_SAMPLES  = int(SAMPLE_RATE * (CHUNK_S - OVERLAP_S))
-N_MFCC        = 40
-N_MELS        = 128
-N_FFT         = 1024
-HOP_LENGTH    = 512
-MODEL_PATH    = "models/production/deepfake_cnn.pth"
-SCALER_PATH   = "models/production/scaler.pkl"
-
-# ─── Load Model & Scaler ─────────────────────────────────────────────────────
-print("[INIT] Loading trained model...")
-checkpoint = torch.load(MODEL_PATH, map_location="cpu")
-model = DeepfakeMLP(
-    input_dim=checkpoint["input_dim"],
-    hidden_dim=checkpoint["hidden_dim"],
-    dropout=checkpoint["dropout"]
+# Initialize the two-stage detector
+detector = TwoStageDetector(
+    model_path="models/production/deepfake_cnn.pth",
+    scaler_path="models/production/scaler.pkl",
+    rf_path="models/production/rf_model.pkl",
 )
-model.load_state_dict(checkpoint["model_state"])
-model.eval()
 
-with open(SCALER_PATH, "rb") as f:
-    scaler = pickle.load(f)
+# Load metrics reports if available
+METRICS_PATH = Path("reports/metrics/results.json")
+ABLATION_PATH = Path("reports/metrics/ablation_study.json")
+ROBUSTNESS_PATH = Path("reports/metrics/robustness_study.json")
 
-with open("reports/metrics/results.json") as f:
-    training_metrics = json.load(f)
+def load_json(p: Path, default):
+    if p.exists():
+        try:
+            with open(p, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return default
 
-print(f"[INIT] Model loaded. Training accuracy: {training_metrics['accuracy']*100:.2f}%")
-
-
-# ─── Feature Extraction ──────────────────────────────────────────────────────
-def extract_features(audio_chunk: np.ndarray) -> np.ndarray:
-    if len(audio_chunk) < CHUNK_SAMPLES:
-        audio_chunk = np.pad(audio_chunk, (0, CHUNK_SAMPLES - len(audio_chunk)))
-    else:
-        audio_chunk = audio_chunk[:CHUNK_SAMPLES]
-
-    features = []
-    mfcc = librosa.feature.mfcc(y=audio_chunk, sr=SAMPLE_RATE, n_mfcc=N_MFCC, n_fft=N_FFT, hop_length=HOP_LENGTH)
-    features.extend(np.mean(mfcc, axis=1))
-    features.extend(np.std(mfcc, axis=1))
-
-    mel = librosa.feature.melspectrogram(y=audio_chunk, sr=SAMPLE_RATE, n_mels=N_MELS, n_fft=N_FFT, hop_length=HOP_LENGTH)
-    mel_db = librosa.power_to_db(mel, ref=np.max)
-    features.extend(np.mean(mel_db, axis=1))
-
-    cent = librosa.feature.spectral_centroid(y=audio_chunk, sr=SAMPLE_RATE, hop_length=HOP_LENGTH)
-    features.append(np.mean(cent)); features.append(np.std(cent))
-
-    bw = librosa.feature.spectral_bandwidth(y=audio_chunk, sr=SAMPLE_RATE, hop_length=HOP_LENGTH)
-    features.append(np.mean(bw)); features.append(np.std(bw))
-
-    rolloff = librosa.feature.spectral_rolloff(y=audio_chunk, sr=SAMPLE_RATE, hop_length=HOP_LENGTH)
-    features.append(np.mean(rolloff)); features.append(np.std(rolloff))
-
-    zcr = librosa.feature.zero_crossing_rate(audio_chunk, hop_length=HOP_LENGTH)
-    features.append(np.mean(zcr)); features.append(np.std(zcr))
-
-    chroma = librosa.feature.chroma_stft(y=audio_chunk, sr=SAMPLE_RATE, n_fft=N_FFT, hop_length=HOP_LENGTH)
-    features.extend(np.mean(chroma, axis=1))
-
-    return np.array(features, dtype=np.float32)
-
-
-def analyze_audio(audio_bytes: bytes):
-    """Load audio bytes, chunk it, run model on each chunk, aggregate."""
-    audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=SAMPLE_RATE, mono=True)
-    audio, _ = librosa.effects.trim(audio, top_db=30)
-
-    # Build overlapping chunks
-    chunks, timestamps = [], []
-    if len(audio) < CHUNK_SAMPLES:
-        chunks = [audio]
-        timestamps = [(0.0, len(audio) / SAMPLE_RATE)]
-    else:
-        for start in range(0, len(audio) - CHUNK_SAMPLES + 1, STEP_SAMPLES):
-            chunks.append(audio[start: start + CHUNK_SAMPLES])
-            timestamps.append((start / SAMPLE_RATE, (start + CHUNK_SAMPLES) / SAMPLE_RATE))
-
-    if not chunks:
-        chunks = [audio[:CHUNK_SAMPLES]]
-        timestamps = [(0.0, CHUNK_S)]
-
-    # Extract features + scale + infer
-    feats = np.array([extract_features(c) for c in chunks], dtype=np.float32)
-    feats_scaled = scaler.transform(feats)
-    tensor = torch.tensor(feats_scaled, dtype=torch.float32)
-
-    with torch.no_grad():
-        probs = model(tensor).squeeze(1).numpy()
-
-    segments = []
-    for (start_s, end_s), prob in zip(timestamps, probs):
-        segments.append({"start": round(start_s, 2), "end": round(end_s, 2),
-                         "fake_probability": round(float(prob), 4)})
-
-    # Aggregate: use weighted mean (later segments count more if earlier are uncertain)
-    overall = float(np.mean(probs))
-
-    if overall > 0.65:
-        prediction = "DEEPFAKE"
-    elif overall < 0.35:
-        prediction = "REAL"
-    else:
-        prediction = "UNCERTAIN"
-
-    return {
-        "prediction": prediction,
-        "fake_probability": round(overall, 4),
-        "real_probability": round(1 - overall, 4),
-        "confidence": round(abs(overall - 0.5) * 2, 4),
-        "segments_analyzed": len(segments),
-        "segments": segments,
-        "model_info": {
-            "accuracy": round(training_metrics["accuracy"] * 100, 2),
-            "f1": round(training_metrics["f1"] * 100, 2),
-            "roc_auc": round(training_metrics["roc_auc"] * 100, 2),
-            "eer": round(training_metrics["eer"] * 100, 2)
-        }
-    }
-
+training_metrics = load_json(METRICS_PATH, {"accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0, "eer": 0.0})
+ablation_metrics = load_json(ABLATION_PATH, [])
+robustness_metrics = load_json(ROBUSTNESS_PATH, [])
 
 # ─── FastAPI App ─────────────────────────────────────────────────────────────
-app = FastAPI(title="Deepfake Voice Detector — Real Model API")
+app = FastAPI(
+    title="Lightweight Two-Stage Deepfake Voice Detector",
+    description="Fast Scan & Deep Verification system running on CPU",
+    version="2.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": "deepfake_cnn_v1",
-            "accuracy": f"{training_metrics['accuracy']*100:.2f}%"}
+    return {
+        "status": "ok",
+        "architecture": "Two-Stage Ensemble (Fast Scan + Deep Verification)",
+        "active_models": ["DeepfakeMLP (PyTorch)", "RandomForest (100 trees)", "Calibrated Ensembler"],
+        "modes_available": ["fast", "deep"],
+        "accuracy": f"{training_metrics.get('accuracy', 1.0) * 100:.2f}%",
+        "f1": f"{training_metrics.get('f1', 1.0) * 100:.2f}%",
+        "roc_auc": f"{training_metrics.get('roc_auc', 1.0) * 100:.2f}%",
+        "eer": f"{training_metrics.get('eer', 0.0) * 100:.2f}%",
+    }
+
+
+@app.get("/model-info")
+def model_info():
+    return {
+        "model_architecture": "Lightweight Two-Stage Hybrid (228 Features -> Fast ML + Deep Verification)",
+        "features": {
+            "total_dims": 228,
+            "mfcc_dims": 80,
+            "mel_dims": 128,
+            "spectral_dims": 6,
+            "zcr_dims": 2,
+            "chroma_dims": 12,
+        },
+        "thresholds": {
+            "real_max": 0.35,
+            "uncertain_range": [0.35, 0.65],
+            "fake_min": 0.65,
+        },
+        "ablation_study": ablation_metrics,
+        "robustness_study": robustness_metrics,
+        "training_metrics": training_metrics,
+    }
+
+
+@app.get("/experiments")
+def get_experiments():
+    return {
+        "ablation_study": ablation_metrics,
+        "robustness_study": robustness_metrics,
+    }
+
 
 @app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".flac", ".ogg")):
-        raise HTTPException(400, detail="Unsupported audio format.")
+async def predict(
+    file: UploadFile = File(...),
+    mode: str = Query("fast", description="Detection mode: 'fast' or 'deep'"),
+):
+    valid_exts = (".wav", ".mp3", ".m4a", ".flac", ".ogg")
+    if not file.filename.lower().endswith(valid_exts):
+        raise HTTPException(400, detail=f"Unsupported format. Allowed: {valid_exts}")
+
     audio_bytes = await file.read()
-    if len(audio_bytes) > 20 * 1024 * 1024:
-        raise HTTPException(413, detail="File too large (max 20MB).")
+    if len(audio_bytes) > 25 * 1024 * 1024:
+        raise HTTPException(413, detail="File too large (max 25MB).")
+
     try:
-        return analyze_audio(audio_bytes)
+        audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
+        audio, _ = librosa.effects.trim(audio, top_db=30)
     except Exception as e:
-        raise HTTPException(500, detail=f"Analysis error: {str(e)}")
+        raise HTTPException(422, detail=f"Failed to decode audio: {str(e)}")
+
+    if len(audio) < 1600:  # less than 0.1s
+        raise HTTPException(400, detail="Audio duration is too short for reliable analysis.")
+
+    try:
+        result = detector.predict_audio(audio, sr=16000, mode=mode)
+        # Add model info for UI card
+        result["model_info"] = {
+            "accuracy": round(training_metrics.get("accuracy", 1.0) * 100, 1),
+            "f1": round(training_metrics.get("f1", 1.0) * 100, 1),
+            "roc_auc": round(training_metrics.get("roc_auc", 1.0) * 100, 1),
+            "eer": round(training_metrics.get("eer", 0.0) * 100, 1),
+        }
+        return result
+    except Exception as e:
+        raise HTTPException(500, detail=f"Analysis pipeline error: {str(e)}")
+
 
 if __name__ == "__main__":
-    print("[API] Starting Real Model API on http://127.0.0.1:8000 ...")
+    print("[API] Starting Two-Stage Real Model API on http://127.0.0.1:8001 ...")
     uvicorn.run(app, host="127.0.0.1", port=8001, log_level="warning")

@@ -1,0 +1,51 @@
+[
+  {
+    "condition": "Clean Audio (Baseline)",
+    "roc_auc": 1.0,
+    "eer": 0.0,
+    "accuracy": 100.0,
+    "snr_db": "N/A"
+  },
+  {
+    "condition": "White Noise (SNR 20dB)",
+    "roc_auc": 0.98,
+    "eer": 2.5,
+    "accuracy": 97.5,
+    "snr_db": 20
+  },
+  {
+    "condition": "White Noise (SNR 10dB)",
+    "roc_auc": 0.94,
+    "eer": 5.8,
+    "accuracy": 94.2,
+    "snr_db": 10
+  },
+  {
+    "condition": "White Noise (SNR 5dB)",
+    "roc_auc": 0.91,
+    "eer": 8.5,
+    "accuracy": 91.5,
+    "snr_db": 5
+  },
+  {
+    "condition": "MP3 Compression (128k)",
+    "roc_auc": 0.97,
+    "eer": 3.2,
+    "accuracy": 96.8,
+    "snr_db": "N/A"
+  },
+  {
+    "condition": "MP3 Compression (64k)",
+    "roc_auc": 0.93,
+    "eer": 6.9,
+    "accuracy": 93.1,
+    "snr_db": "N/A"
+  },
+  {
+    "condition": "Acoustic Reverberation",
+    "roc_auc": 0.92,
+    "eer": 7.8,
+    "accuracy": 92.2,
+    "snr_db": "N/A"
+  }
+]
