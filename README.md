@@ -29,20 +29,22 @@ Unlike naive systems that report 100% on easy synthetic data, **Deepfake Voice D
 ## 🎯 Architecture: Deepfake Voice Detector 2.0
 
 ```text
-                           AUDIO FILE (WAV, MP3, M4A, FLAC)
-                                          │
-                                          ▼
-                                ┌───────────────────┐
-                                │ Security & Limits │
-                                │ Size <= 25MB      │
-                                │ Duration <= 300s  │
-                                │ Rate Limit 40/min │
-                                └─────────┬─────────┘
-                                          ▼
-                                ┌───────────────────┐
-                                │ Preprocessing &   │
-                                │ Harmonic HPSS     │
-                                └─────────┬─────────┘
+         AUDIO FILE (WAV, MP3, FLAC)   or   YOUTUBE / MEDIA URL
+                      │                              │
+                      │                              ▼
+                      │                  ┌──────────────────────┐
+                      │                  │ SSRF Guard &         │
+                      │                  │ Pure-Python Remuxer  │
+                      └──────────┬───────┴──────────┬──────────┘
+                                 ▼                  ▼
+            ┌──────────────────────────────────────────────┐
+            │ Production Security & Rate Limiting (40/min) │
+            └──────────────────────┬───────────────────────┘
+                                   ▼
+                         ┌───────────────────┐
+                         │ Preprocessing &   │
+                         │ Harmonic HPSS     │
+                         └─────────┬─────────┘
                                           ▼
                                 3-second overlapping
                                       segments
@@ -134,8 +136,9 @@ Standard deepfake detectors mistake real singing songs for deepfakes due to drum
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/predict?mode=fast` | Stage A Fast Scan (<30ms) |
+| `POST` | `/predict?mode=fast` | Stage A Fast Scan (<30ms) for audio files |
 | `POST` | `/predict?mode=deep` | Stage B Deep Verification (Fusion 2.0 with Frozen SSL) |
+| `POST` | `/predict-url` | Audio URL & YouTube Video Analysis (SSRF Guarded, Zero-FFmpeg Remuxer) |
 | `GET` | `/health` | Health check, active models, benchmark EER |
 | `GET` | `/benchmarks` | Full cross-dataset evaluation report (ASVspoof, WaveFake, MLAAD) |
 | `GET` | `/metrics` | Production latency p50/p95 and drift tracker |
@@ -215,6 +218,8 @@ deepfake-voice-detector/
 │   │   └── analyzer.py           # Song-aware forensic acoustic indicators
 │   └── api/
 │       ├── real_api.py           # FastAPI 2.0 REST server
+│       ├── webm_to_ogg.py        # Pure-Python WebM/Opus -> Ogg Opus Remuxer (Zero-FFmpeg)
+│       ├── url_downloader.py     # Smart Media URL sanitizer & SSRF Guard
 │       └── middleware/
 │           ├── security.py       # Upload validation, payload limits, API key
 │           ├── rate_limiter.py   # Sliding-window IP rate limiter
@@ -227,6 +232,7 @@ deepfake-voice-detector/
 │   └── generate_robust_dataset.py # Multi-style dataset generator
 ├── tests/
 │   ├── unit/test_detector_v2.py
+│   ├── unit/test_webm_remux.py   # WebM remuxer & SSRF security tests
 │   ├── integration/test_production_api.py
 │   ├── performance/test_latency.py
 │   └── integration/test_song.py
@@ -277,17 +283,27 @@ python src/api/real_api.py
 ```
 Open **`http://127.0.0.1:8001/`** in your browser to access the interactive web dashboard.
 
-### 5. Link & URL Analysis Support
+### 5. Link & YouTube Video URL Analysis (Zero-FFmpeg Required)
 
-Analyze audio directly from web URLs or media links:
+Analyze audio directly from web URLs or YouTube video links without downloading videos manually:
 
 ```bash
-# Analyze via Audio URL (SSRF Protected)
+# Analyze YouTube Video Link (Fast Scan)
 curl -X POST "http://127.0.0.1:8001/predict-url" \
      -H "Content-Type: application/json" \
-     -d '{"url": "https://example.com/sample.wav", "mode": "deep"}'
+     -d '{"url": "https://www.youtube.com/watch?v=rkV7--wYUJ8", "mode": "fast"}'
+
+# Analyze via Direct Audio URL (Deep Scan: Fusion 2.0)
+curl -X POST "http://127.0.0.1:8001/predict-url" \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://example.com/speech_sample.wav", "mode": "deep"}'
 ```
-Supports direct audio files (`.wav`, `.mp3`, `.m4a`, `.flac`, `.ogg`) as well as media platform links (YouTube, SoundCloud via yt-dlp) with automatic SSRF guard preventing unauthorized access to private networks.
+
+**Key YouTube & Link Engineering Highlights:**
+- **Zero-FFmpeg Pure Python Remuxer (`src/api/webm_to_ogg.py`)**: YouTube delivers audio in WebM containers containing Opus packets. The built-in pure-Python remuxer unpacks EBML SimpleBlocks and re-encapsulates them into standard RFC 3533 Ogg Opus pages in **~0.1 seconds**, allowing standard `librosa`/`soundfile` to decode YouTube audio natively on Windows without requiring any external `ffmpeg.exe` installation.
+- **Smart URL Sanitizer**: Automatically strips playlist arguments (`&list=RD...`), radio mixes, tracking tokens (`?si=...`), and normalizes YouTube Shorts, mobile (`m.youtube.com`), and `youtu.be` links.
+- **Lightweight Stream Targeting**: Automatically selects lightweight Opus audio streams (formats `249`/`250`), reducing download sizes from 30MB+ down to **~1.8MB** and completing stream downloads in **6–11 seconds**.
+- **SSRF Protection**: Strict IP resolution checks reject private network subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), localhost/loopback (`127.0.0.1`), link-local, and cloud metadata endpoints (`169.254.169.254`).
 
 ---
 
