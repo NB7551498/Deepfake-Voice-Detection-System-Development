@@ -54,7 +54,7 @@ def validate_audio_payload(audio_bytes: bytes, filename: str) -> None:
             detail=f"Unsupported format '{ext}'. Allowed extensions: {list(ALLOWED_EXTENSIONS)}"
         )
 
-    # 3. Audio decoding & duration check
+    # 3. Audio decoding & verification
     check_bytes = audio_bytes
     if audio_bytes.startswith(b"\x1a\x45\xdf\xa3") or filename.lower().endswith(".webm"):
         try:
@@ -64,16 +64,10 @@ def validate_audio_payload(audio_bytes: bytes, filename: str) -> None:
             pass
 
     try:
-        audio, sr = librosa.load(io.BytesIO(check_bytes), sr=16000, mono=True, duration=MAX_DURATION_SECONDS + 1)
+        audio, sr = librosa.load(io.BytesIO(check_bytes), sr=16000, mono=True, duration=MAX_DURATION_SECONDS)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Audio decoding failure: {str(e)[:120]}")
 
     duration = len(audio) / sr
-    if duration > MAX_DURATION_SECONDS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Audio exceeds duration limit of {int(MAX_DURATION_SECONDS)}s (got {duration:.1f}s)."
-        )
-
     if duration < 0.1:
         raise HTTPException(status_code=400, detail="Audio duration is too short for acoustic evaluation.")

@@ -15,6 +15,9 @@ from typing import List, Dict, Any, Tuple
 
 def analyze_acoustic_evidence(chunk: np.ndarray, sr: int = 16000, fake_prob: float = 0.5) -> Dict[str, Any]:
     """Analyze a single audio chunk and identify acoustic evidence."""
+    if len(chunk) < 2048:
+        chunk = np.pad(chunk, (0, 2048 - len(chunk)), mode='constant')
+
     hop = 512
 
     # 1. Spectral Flatness

@@ -50,7 +50,7 @@ def safely_decode_audio(audio_bytes: bytes, filename: str = "audio.wav") -> np.n
             print(f"[safely_decode_audio] WebM remux warning: {remux_err}")
 
     try:
-        audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
+        audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True, duration=180.0)
         audio, _ = librosa.effects.trim(audio, top_db=30)
         return audio
     except Exception:
@@ -59,7 +59,7 @@ def safely_decode_audio(audio_bytes: bytes, filename: str = "audio.wav") -> np.n
         try:
             with os.fdopen(tmp_fd, "wb") as f:
                 f.write(audio_bytes)
-            audio, sr = librosa.load(tmp_path, sr=16000, mono=True)
+            audio, sr = librosa.load(tmp_path, sr=16000, mono=True, duration=180.0)
             audio, _ = librosa.effects.trim(audio, top_db=30)
             return audio
         except Exception as err:

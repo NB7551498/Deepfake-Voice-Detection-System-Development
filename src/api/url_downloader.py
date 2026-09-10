@@ -55,13 +55,38 @@ def is_safe_url(url: str) -> tuple[bool, str]:
     return True, ""
 
 
+def clean_media_url(url: str) -> str:
+    """Clean video URLs, stripping playlist, mix, radio, and tracking parameters."""
+    url = url.strip()
+    try:
+        parsed = urllib.parse.urlparse(url)
+        netloc = parsed.netloc.lower()
+        if "youtu.be" in netloc:
+            vid_id = parsed.path.strip("/")
+            if vid_id:
+                return f"https://www.youtube.com/watch?v={vid_id}"
+        elif "youtube.com" in netloc or "music.youtube.com" in netloc:
+            if "/shorts/" in parsed.path:
+                parts = parsed.path.split("/shorts/")
+                if len(parts) > 1:
+                    vid_id = parts[1].split("/")[0].split("?")[0]
+                    return f"https://www.youtube.com/watch?v={vid_id}"
+            qs = urllib.parse.parse_qs(parsed.query)
+            v_list = qs.get("v")
+            if v_list and v_list[0]:
+                return f"https://www.youtube.com/watch?v={v_list[0]}"
+    except Exception:
+        pass
+    return url
+
+
 def download_audio_from_url(url: str) -> tuple[bytes, str]:
     """
     Download audio from a given URL safely.
     Returns:
         (audio_bytes, filename)
     """
-    url = url.strip()
+    url = clean_media_url(url.strip())
     is_safe, error_msg = is_safe_url(url)
     if not is_safe:
         raise ValueError(error_msg)
@@ -122,19 +147,27 @@ def _download_with_ytdlp(url: str) -> tuple[bytes, str]:
     except ImportError:
         raise ValueError("Media link detected, but yt-dlp is not available on this server.")
 
+    clean_url = clean_media_url(url)
+
     with tempfile.TemporaryDirectory() as tmpdir:
         out_template = os.path.join(tmpdir, "audio.%(ext)s")
         ydl_opts = {
-            "format": "bestaudio/best",
+            # Prioritize lightweight WebM Opus (249/250/251) which download in seconds and remux natively
+            "format": "249/250/251/bestaudio[ext=webm]/bestaudio[ext=ogg]/bestaudio",
             "outtmpl": out_template,
             "max_filesize": MAX_SIZE_BYTES,
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
+            "extract_flat": False,
+            "nocheckcertificate": True,
         }
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([clean_url])
+        except Exception as dl_err:
+            raise ValueError(f"Could not download audio from YouTube: {str(dl_err)}")
 
         files = list(Path(tmpdir).glob("*"))
         if not files:

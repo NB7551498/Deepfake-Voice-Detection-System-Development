@@ -65,3 +65,18 @@ def test_is_safe_url_allows_public_web():
     for url in safe_urls:
         safe, err = is_safe_url(url)
         assert safe is True, f"Expected {url} to be allowed, got error: {err}"
+
+
+def test_clean_media_url():
+    """Verify YouTube playlist, mix, shorts, and tracking parameters are cleaned."""
+    from src.api.url_downloader import clean_media_url
+
+    mix_url = "https://www.youtube.com/watch?v=rkV7--wYUJ8&list=RDrkV7--wYUJ8&start_radio=1"
+    assert clean_media_url(mix_url) == "https://www.youtube.com/watch?v=rkV7--wYUJ8"
+
+    short_url = "https://youtu.be/rkV7--wYUJ8?si=tracking123"
+    assert clean_media_url(short_url) == "https://www.youtube.com/watch?v=rkV7--wYUJ8"
+
+    yt_shorts = "https://www.youtube.com/shorts/rkV7--wYUJ8?feature=share"
+    assert clean_media_url(yt_shorts) == "https://www.youtube.com/watch?v=rkV7--wYUJ8"
+
