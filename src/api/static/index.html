@@ -125,6 +125,10 @@
           <!-- Sample URLs -->
           <div class="flex items-center gap-2 flex-wrap text-xs pt-1">
             <span class="text-[var(--muted-foreground)] text-[11px]">Quick test:</span>
+            <button type="button" onclick="setSampleUrl('https://www.youtube.com/watch?v=jNQXAC9IVRw')" class="px-2 py-0.5 rounded bg-[var(--card)] hover:bg-red-500/10 text-red-500 border border-[var(--border)] text-[11px] font-mono transition-colors flex items-center gap-1">
+              <svg class="w-3 h-3 text-red-500 fill-current" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
+              ▶ YouTube Video
+            </button>
             <button type="button" onclick="setSampleUrl('https://raw.githubusercontent.com/Jakobovski/free-spoken-digit-dataset/master/recordings/0_jackson_0.wav')" class="px-2 py-0.5 rounded bg-[var(--card)] hover:bg-[var(--primary)]/10 text-[var(--primary)] border border-[var(--border)] text-[11px] font-mono transition-colors">
               ▶ Speech Sample 1 (WAV)
             </button>
@@ -395,7 +399,11 @@
             linkArea.classList.remove("opacity-50", "pointer-events-none");
             return;
           }
-          loadingText.textContent = "Fetching audio from link & running security scan...";
+          if (targetUrl.includes("youtube.com") || targetUrl.includes("youtu.be")) {
+            loadingText.textContent = "Fetching YouTube audio stream, remuxing Opus & running detector...";
+          } else {
+            loadingText.textContent = "Fetching audio from link & running security scan...";
+          }
           try {
             const res = await fetch(`${API_BASE}/predict-url`, {
               method: "POST",

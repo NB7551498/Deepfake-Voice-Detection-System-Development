@@ -1,4 +1,4 @@
-﻿"""
+"""
 Secure Audio URL Fetcher & Downloader.
 
 Features:
@@ -96,10 +96,18 @@ def download_audio_from_url(url: str) -> tuple[bytes, str]:
 
         parsed_path = urllib.parse.urlparse(url).path
         filename = Path(parsed_path).name or "downloaded_audio.wav"
-        if not any(filename.lower().endswith(ext) for ext in [".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma"]):
+        if not any(filename.lower().endswith(ext) for ext in [".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma", ".webm"]):
             filename += ".wav"
 
-        return bytes(content), filename
+        raw_bytes = bytes(content)
+        if filename.lower().endswith(".webm") or raw_bytes.startswith(b"\x1a\x45\xdf\xa3"):
+            try:
+                from src.api.webm_to_ogg import remux_webm_to_ogg
+                return remux_webm_to_ogg(raw_bytes), "downloaded_audio.ogg"
+            except Exception:
+                pass
+
+        return raw_bytes, filename
 
     except requests.exceptions.RequestException as e:
         if is_media_platform:
@@ -135,5 +143,14 @@ def _download_with_ytdlp(url: str) -> tuple[bytes, str]:
         target_file = files[0]
         with open(target_file, "rb") as f:
             data = f.read()
+
+        # If downloaded stream is WebM (Opus container), remux into standard Ogg Opus
+        if target_file.suffix.lower() == ".webm" or data.startswith(b"\x1a\x45\xdf\xa3"):
+            try:
+                from src.api.webm_to_ogg import remux_webm_to_ogg
+                ogg_bytes = remux_webm_to_ogg(data)
+                return ogg_bytes, "youtube_audio.ogg"
+            except Exception as remux_err:
+                print(f"[url_downloader] WebM remux warning: {remux_err}")
 
         return data, target_file.name

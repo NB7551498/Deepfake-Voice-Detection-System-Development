@@ -14,7 +14,7 @@ from typing import Optional
 
 MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
 MAX_DURATION_SECONDS = 300.0            # 5 minutes
-ALLOWED_EXTENSIONS = {".wav", ".mp3", ".m4a", ".flac", ".ogg"}
+ALLOWED_EXTENSIONS = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm", ".opus", ".aac", ".mp4"}
 
 DEMO_API_KEYS = {"prod-demo-key-2026", "evaluation-test-token"}
 
@@ -55,8 +55,16 @@ def validate_audio_payload(audio_bytes: bytes, filename: str) -> None:
         )
 
     # 3. Audio decoding & duration check
+    check_bytes = audio_bytes
+    if audio_bytes.startswith(b"\x1a\x45\xdf\xa3") or filename.lower().endswith(".webm"):
+        try:
+            from src.api.webm_to_ogg import remux_webm_to_ogg
+            check_bytes = remux_webm_to_ogg(audio_bytes)
+        except Exception:
+            pass
+
     try:
-        audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True, duration=MAX_DURATION_SECONDS + 1)
+        audio, sr = librosa.load(io.BytesIO(check_bytes), sr=16000, mono=True, duration=MAX_DURATION_SECONDS + 1)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Audio decoding failure: {str(e)[:120]}")
 

@@ -1,5 +1,4 @@
 import torch
-import torchaudio
 import librosa
 import numpy as np
 import io
@@ -15,18 +14,23 @@ class AudioPreprocessor:
     def load_and_preprocess(self, file_path_or_bytes):
         """Loads audio, converts to mono, resamples to target sample rate, and normalizes."""
         if isinstance(file_path_or_bytes, bytes):
-            waveform, sr = torchaudio.load(io.BytesIO(file_path_or_bytes))
+            audio_np, sr = librosa.load(io.BytesIO(file_path_or_bytes), sr=self.sample_rate, mono=True)
         else:
-            waveform, sr = torchaudio.load(file_path_or_bytes)
-        
+            audio_np, sr = librosa.load(file_path_or_bytes, sr=self.sample_rate, mono=True)
+        waveform = torch.from_numpy(audio_np).unsqueeze(0).float()
+
         # Convert to mono
         if waveform.shape[0] > 1:
             waveform = torch.mean(waveform, dim=0, keepdim=True)
             
         # Resample
         if sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=self.sample_rate)
-            waveform = resampler(waveform)
+            if HAS_TORCHAUDIO:
+                resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=self.sample_rate)
+                waveform = resampler(waveform)
+            else:
+                audio_resampled = librosa.resample(waveform.squeeze().numpy(), orig_sr=sr, target_sr=self.sample_rate)
+                waveform = torch.from_numpy(audio_resampled).unsqueeze(0).float()
             
         # Peak Normalization
         waveform = waveform / torch.max(torch.abs(waveform))

@@ -40,6 +40,15 @@ class UrlPredictRequest(BaseModel):
 
 
 def safely_decode_audio(audio_bytes: bytes, filename: str = "audio.wav") -> np.ndarray:
+    # If bytes are WebM/EBML container, remux to standard Ogg Opus first
+    if audio_bytes.startswith(b"\x1a\x45\xdf\xa3") or filename.lower().endswith(".webm"):
+        try:
+            from src.api.webm_to_ogg import remux_webm_to_ogg
+            audio_bytes = remux_webm_to_ogg(audio_bytes)
+            filename = "audio.ogg"
+        except Exception as remux_err:
+            print(f"[safely_decode_audio] WebM remux warning: {remux_err}")
+
     try:
         audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
         audio, _ = librosa.effects.trim(audio, top_db=30)
