@@ -263,12 +263,31 @@ python tests/integration/test_production_api.py
 python tests/performance/test_latency.py
 ```
 
-### 4. Start the Production API Server
+### 4. Start the Production System & Dashboard
 
+**On Windows (One-Click):**
+Double-click `start.bat` or run:
+```bat
+start.bat
+```
+
+**Via Python:**
 ```bash
 python src/api/real_api.py
-# Listening on http://127.0.0.1:8001
 ```
+Open **`http://127.0.0.1:8001/`** in your browser to access the interactive web dashboard.
+
+### 5. Link & URL Analysis Support
+
+Analyze audio directly from web URLs or media links:
+
+```bash
+# Analyze via Audio URL (SSRF Protected)
+curl -X POST "http://127.0.0.1:8001/predict-url" \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://example.com/sample.wav", "mode": "deep"}'
+```
+Supports direct audio files (`.wav`, `.mp3`, `.m4a`, `.flac`, `.ogg`) as well as media platform links (YouTube, SoundCloud via yt-dlp) with automatic SSRF guard preventing unauthorized access to private networks.
 
 ---
 

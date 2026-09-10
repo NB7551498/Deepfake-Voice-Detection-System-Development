@@ -1,62 +1,158 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { UploadCloud, AlertTriangle, CheckCircle, Activity } from 'lucide-react';
-import './App.css'; // Assume Tailwind is loaded here
+import { UploadCloud, AlertTriangle, CheckCircle, Activity, Link as LinkIcon } from 'lucide-react';
+import './App.css';
 
 function App() {
+  const [inputMode, setInputMode] = useState('file'); // 'file' or 'link'
   const [file, setFile] = useState(null);
+  const [url, setUrl] = useState('');
+  const [detectMode, setDetectMode] = useState('fast'); // 'fast' or 'deep'
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const handleUpload = async (e) => {
-    e.preventDefault();
-    if (!file) return;
+  const handleAnalyze = async (e) => {
+    if (e) e.preventDefault();
+    if (inputMode === 'file' && !file) return;
+    if (inputMode === 'link' && (!url || url.trim().length < 5)) return;
 
     setLoading(true);
-    const formData = new FormData();
-    formData.append("file", file);
+    setResult(null);
+
+    const API_BASE = "http://127.0.0.1:8001";
 
     try {
-      // Point to FastAPI backend
-      const res = await axios.post("http://localhost:8000/predict", formData);
+      let res;
+      if (inputMode === 'link') {
+        res = await axios.post(`${API_BASE}/predict-url`, {
+          url: url.trim(),
+          mode: detectMode
+        });
+      } else {
+        const formData = new FormData();
+        formData.append("file", file);
+        res = await axios.post(`${API_BASE}/predict?mode=${detectMode}`, formData);
+      }
       setResult(res.data);
     } catch (err) {
       console.error(err);
-      alert("Error analyzing audio.");
+      const msg = err.response?.data?.detail || err.message || "Error analyzing audio.";
+      alert(`Error: ${msg}`);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-8 font-sans flex flex-col items-center">
+    <div className="min-h-screen bg-gray-900 text-white p-6 font-sans flex flex-col items-center">
       <div className="max-w-2xl w-full border border-gray-700 rounded-xl overflow-hidden bg-gray-800 shadow-2xl">
-        <div className="bg-gray-950 p-4 border-b border-gray-700 flex items-center justify-center space-x-3">
-          <Activity className="text-blue-400" />
-          <h1 className="text-xl font-bold tracking-widest text-gray-200">AI VOICE DETECTOR</h1>
+        <div className="bg-gray-950 p-4 border-b border-gray-700 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Activity className="text-blue-400" />
+            <h1 className="text-lg font-bold tracking-wider text-gray-200">DEEPFAKE VOICE DETECTOR 2.0</h1>
+          </div>
+          <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+            Ensemble-v2.0
+          </span>
         </div>
 
-        <div className="p-8">
-          <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 flex flex-col items-center justify-center hover:border-blue-400 transition-colors cursor-pointer relative"
-               onClick={() => document.getElementById('file-upload').click()}>
-            <UploadCloud className="w-12 h-12 text-gray-400 mb-4" />
-            <span className="text-gray-300 font-medium">Upload Audio</span>
-            <span className="text-sm text-gray-500 mt-2">{file ? file.name : "WAV, MP3, M4A up to 10MB"}</span>
-            <input 
-              id="file-upload" 
-              type="file" 
-              className="hidden" 
-              accept=".wav,.mp3,.m4a" 
-              onChange={(e) => setFile(e.target.files[0])} 
-            />
+        <div className="p-6 space-y-5">
+          {/* Mode Selector */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setDetectMode('fast')}
+              className={`p-3 rounded-lg border text-left transition-all ${
+                detectMode === 'fast'
+                  ? 'border-blue-500 bg-blue-500/10'
+                  : 'border-gray-700 hover:border-gray-600 bg-gray-900/40'
+              }`}
+            >
+              <div className="font-bold text-xs text-blue-400">⚡ FAST SCAN (&lt;30ms)</div>
+              <div className="text-[11px] text-gray-400 mt-0.5">228 Acoustic Features</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDetectMode('deep')}
+              className={`p-3 rounded-lg border text-left transition-all ${
+                detectMode === 'deep'
+                  ? 'border-blue-500 bg-blue-500/10'
+                  : 'border-gray-700 hover:border-gray-600 bg-gray-900/40'
+              }`}
+            >
+              <div className="font-bold text-xs text-blue-400">🔬 DEEP VERIFY (Fusion 2.0)</div>
+              <div className="text-[11px] text-gray-400 mt-0.5">Acoustic + Frozen SSL (996 dims)</div>
+            </button>
           </div>
 
-          <button 
-            onClick={handleUpload}
-            disabled={!file || loading}
-            className="w-full mt-6 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded transition-colors disabled:opacity-50"
+          {/* Input Source Tabs */}
+          <div className="flex items-center space-x-2 border-b border-gray-700 pb-2">
+            <button
+              type="button"
+              onClick={() => setInputMode('file')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                inputMode === 'file'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>Audio File</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode('link')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
+                inputMode === 'link'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+            >
+              <LinkIcon className="w-3.5 h-3.5" />
+              <span>Audio Link / URL</span>
+            </button>
+          </div>
+
+          {/* Input Area */}
+          {inputMode === 'file' ? (
+            <div
+              className="border-2 border-dashed border-gray-600 rounded-lg p-6 flex flex-col items-center justify-center hover:border-blue-400 transition-colors cursor-pointer bg-gray-900/30"
+              onClick={() => document.getElementById('file-upload').click()}
+            >
+              <UploadCloud className="w-10 h-10 text-gray-400 mb-2" />
+              <span className="text-gray-300 font-medium text-sm">Upload Audio File</span>
+              <span className="text-xs text-gray-500 mt-1">{file ? file.name : "WAV, MP3, M4A, FLAC up to 25MB"}</span>
+              <input
+                id="file-upload"
+                type="file"
+                className="hidden"
+                accept=".wav,.mp3,.m4a,.flac,.ogg"
+                onChange={(e) => setFile(e.target.files[0])}
+              />
+            </div>
+          ) : (
+            <div className="border border-gray-700 rounded-lg p-4 bg-gray-900/40 space-y-2">
+              <label className="block text-xs font-semibold text-gray-300">Enter Audio or Media URL</label>
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://example.com/audio.mp3, YouTube, or SoundCloud link..."
+                className="w-full px-3 py-2 rounded-lg bg-gray-950 border border-gray-700 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 font-mono"
+              />
+              <div className="flex items-center justify-between text-[11px] text-gray-400">
+                <span>Direct Audio (MP3, WAV, M4A) or YouTube / SoundCloud</span>
+                <span className="text-emerald-400 font-medium">🔒 SSRF Guard</span>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handleAnalyze}
+            disabled={(inputMode === 'file' && !file) || (inputMode === 'link' && (!url || url.trim().length < 5)) || loading}
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-40 text-sm shadow-md"
           >
-            {loading ? "Analyzing Voice..." : "Analyze Voice"}
+            {loading ? "Analyzing Audio..." : "Run Detection"}
           </button>
         </div>
 

@@ -78,15 +78,52 @@
         </div>
       </div>
 
-      <!-- File Upload Area -->
-      <div id="uploadArea" onclick="document.getElementById('fileInput').click()"
-        class="border-2 border-dashed border-[var(--border)] hover:border-[var(--primary)] transition-all rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer bg-[var(--background)]/50">
-        <svg class="w-10 h-10 text-[var(--muted-foreground)] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-        </svg>
-        <span class="text-sm font-semibold text-[var(--foreground)]">Click to Upload Audio File</span>
-        <span id="fileNameDisplay" class="text-xs text-[var(--muted-foreground)] mt-1">Speech or Singing Songs · WAV, MP3, M4A, FLAC up to 25MB (max 300s)</span>
-        <input id="fileInput" type="file" class="hidden" accept=".wav,.mp3,.m4a,.flac,.ogg" onchange="handleFileSelect(event)">
+      <!-- Input Mode Tabs (File vs Link) -->
+      <div class="space-y-3">
+        <div class="flex items-center space-x-2 border-b border-[var(--border)] pb-2">
+          <button id="tabFileBtn" onclick="switchInputTab('file')"
+            class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-[var(--primary)] text-[var(--primary-foreground)] flex items-center space-x-1.5 shadow-sm">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+            </svg>
+            <span>Audio File</span>
+          </button>
+          <button id="tabLinkBtn" onclick="switchInputTab('link')"
+            class="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)] transition-all flex items-center space-x-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+            </svg>
+            <span>Audio Link / URL</span>
+          </button>
+        </div>
+
+        <!-- File Upload Area -->
+        <div id="uploadArea" onclick="document.getElementById('fileInput').click()"
+          class="border-2 border-dashed border-[var(--border)] hover:border-[var(--primary)] transition-all rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer bg-[var(--background)]/50">
+          <svg class="w-10 h-10 text-[var(--muted-foreground)] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          <span class="text-sm font-semibold text-[var(--foreground)]">Click to Upload Audio File</span>
+          <span id="fileNameDisplay" class="text-xs text-[var(--muted-foreground)] mt-1">Speech or Singing Songs · WAV, MP3, M4A, FLAC up to 25MB (max 300s)</span>
+          <input id="fileInput" type="file" class="hidden" accept=".wav,.mp3,.m4a,.flac,.ogg" onchange="handleFileSelect(event)">
+        </div>
+
+        <!-- Link Input Area -->
+        <div id="linkArea" class="hidden border border-[var(--border)] rounded-xl p-6 bg-[var(--background)]/50 space-y-3">
+          <div class="flex items-center space-x-2 text-xs font-semibold text-[var(--foreground)]">
+            <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+            </svg>
+            <span>Analyze From Audio or Media URL</span>
+          </div>
+          <input id="audioUrlInput" type="url" placeholder="https://example.com/audio.mp3, YouTube, or SoundCloud link..."
+            oninput="handleUrlInput(event)"
+            class="w-full px-4 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm text-[var(--foreground)] placeholder-[var(--muted-foreground)] focus:outline-none focus:border-[var(--primary)] font-mono text-xs">
+          <div class="flex items-center justify-between text-[11px] text-[var(--muted-foreground)]">
+            <span>Direct Audio (MP3, WAV, M4A, FLAC) or YouTube / SoundCloud</span>
+            <span class="text-emerald-500 font-semibold">🔒 SSRF Guard Active</span>
+          </div>
+        </div>
       </div>
 
       <!-- Action Button -->
@@ -226,8 +263,41 @@
   <script>
     const API_BASE = (window.location.protocol.startsWith("http") && window.location.port === "8001") ? "" : "http://127.0.0.1:8001";
     let selectedFile = null;
+    let enteredUrl = "";
+    let currentInputTab = "file";
     let currentMode = "fast";
     let apiOnline = false;
+
+    function switchInputTab(tab) {
+      currentInputTab = tab;
+      const fileBtn = document.getElementById("tabFileBtn");
+      const linkBtn = document.getElementById("tabLinkBtn");
+      const uploadArea = document.getElementById("uploadArea");
+      const linkArea = document.getElementById("linkArea");
+      const analyzeBtn = document.getElementById("analyzeBtn");
+
+      if (tab === "file") {
+        fileBtn.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-[var(--primary)] text-[var(--primary-foreground)] flex items-center space-x-1.5 shadow-sm";
+        linkBtn.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)] transition-all flex items-center space-x-1.5";
+        uploadArea.classList.remove("hidden");
+        linkArea.classList.add("hidden");
+        analyzeBtn.disabled = !selectedFile;
+      } else {
+        linkBtn.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-[var(--primary)] text-[var(--primary-foreground)] flex items-center space-x-1.5 shadow-sm";
+        fileBtn.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--muted)] transition-all flex items-center space-x-1.5";
+        uploadArea.classList.add("hidden");
+        linkArea.classList.remove("hidden");
+        analyzeBtn.disabled = !enteredUrl || enteredUrl.trim().length < 8;
+      }
+      document.getElementById("resultsArea").classList.add("hidden");
+    }
+
+    function handleUrlInput(e) {
+      enteredUrl = e.target.value.trim();
+      const analyzeBtn = document.getElementById("analyzeBtn");
+      analyzeBtn.disabled = !enteredUrl || enteredUrl.length < 8;
+      document.getElementById("resultsArea").classList.add("hidden");
+    }
 
     async function initHealth() {
       try {
@@ -273,11 +343,13 @@
     async function runAnalysis() {
       const btn = document.getElementById("analyzeBtn");
       const uploadArea = document.getElementById("uploadArea");
+      const linkArea = document.getElementById("linkArea");
       const loading = document.getElementById("loadingState");
       const loadingText = document.getElementById("loadingText");
 
       btn.classList.add("hidden");
       uploadArea.classList.add("opacity-50", "pointer-events-none");
+      linkArea.classList.add("opacity-50", "pointer-events-none");
       loading.classList.remove("hidden");
       document.getElementById("resultsArea").classList.add("hidden");
 
@@ -288,18 +360,46 @@
       }
 
       let data;
-      if (apiOnline && selectedFile) {
-        const fd = new FormData();
-        fd.append("file", selectedFile);
-        try {
-          const res = await fetch(`${API_BASE}/predict?mode=${currentMode}`, { method: "POST", body: fd });
-          data = await res.json();
-        } catch (err) {
-          alert("Inference error: " + err.message);
-          loading.classList.add("hidden");
-          btn.classList.remove("hidden");
-          uploadArea.classList.remove("opacity-50", "pointer-events-none");
-          return;
+      if (apiOnline) {
+        if (currentInputTab === "link") {
+          loadingText.textContent = "Fetching audio from link & running security scan...";
+          try {
+            const res = await fetch(`${API_BASE}/predict-url`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: enteredUrl, mode: currentMode })
+            });
+            if (!res.ok) {
+              const err = await res.json();
+              throw new Error(err.detail || "URL processing failed");
+            }
+            data = await res.json();
+          } catch (err) {
+            alert("URL Processing Error: " + err.message);
+            loading.classList.add("hidden");
+            btn.classList.remove("hidden");
+            uploadArea.classList.remove("opacity-50", "pointer-events-none");
+            linkArea.classList.remove("opacity-50", "pointer-events-none");
+            return;
+          }
+        } else if (selectedFile) {
+          const fd = new FormData();
+          fd.append("file", selectedFile);
+          try {
+            const res = await fetch(`${API_BASE}/predict?mode=${currentMode}`, { method: "POST", body: fd });
+            if (!res.ok) {
+              const err = await res.json();
+              throw new Error(err.detail || "Audio analysis failed");
+            }
+            data = await res.json();
+          } catch (err) {
+            alert("Inference error: " + err.message);
+            loading.classList.add("hidden");
+            btn.classList.remove("hidden");
+            uploadArea.classList.remove("opacity-50", "pointer-events-none");
+            linkArea.classList.remove("opacity-50", "pointer-events-none");
+            return;
+          }
         }
       } else {
         await new Promise(r => setTimeout(r, currentMode === "deep" ? 900 : 300));
@@ -308,8 +408,12 @@
 
       loading.classList.add("hidden");
       uploadArea.classList.remove("opacity-50", "pointer-events-none");
+      linkArea.classList.remove("opacity-50", "pointer-events-none");
       btn.classList.remove("hidden");
       btn.textContent = "Analyze Another Audio";
+
+      renderResults(data);
+    }
 
       renderResults(data);
     }

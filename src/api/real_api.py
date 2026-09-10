@@ -24,10 +24,17 @@ from fastapi.responses import HTMLResponse, FileResponse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from pydantic import BaseModel
 from src.models.two_stage import TwoStageDetector
 from src.api.middleware.security import validate_audio_payload, validate_api_key
 from src.api.middleware.rate_limiter import rate_limiter
 from src.api.middleware.monitoring import monitor
+from src.api.url_downloader import download_audio_from_url
+
+
+class UrlPredictRequest(BaseModel):
+    url: str
+    mode: str = "fast"
 
 # Initialize Two-Stage Detector 2.0
 detector = TwoStageDetector(
@@ -171,6 +178,54 @@ async def predict(
         result = detector.predict_audio(audio, sr=16000, mode=mode)
 
         # Record metrics
+        monitor.record_inference(
+            prediction=result.get("prediction", "UNCERTAIN"),
+            fake_probability=result.get("fake_probability", 0.5),
+            confidence=result.get("confidence", 0.0),
+            latency_ms=result.get("latency_ms", 0.0),
+        )
+
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Inference pipeline error: {str(e)}")
+
+
+@app.post("/predict-url")
+async def predict_url(
+    request: Request,
+    payload: UrlPredictRequest,
+    authorized: bool = Depends(validate_api_key),
+):
+    """
+    Download audio securely from URL (Direct audio link or media platform) and run deepfake detection.
+    """
+    # 1. Rate limiting check
+    rate_limiter.check(request)
+
+    # 2. Secure download
+    try:
+        audio_bytes, filename = download_audio_from_url(payload.url)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve audio from link: {str(e)}")
+
+    # 3. Payload validation
+    validate_audio_payload(audio_bytes, filename)
+
+    # 4. Decode
+    try:
+        audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
+        audio, _ = librosa.effects.trim(audio, top_db=30)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Audio decoding failure: {str(e)}")
+
+    # 5. Inference
+    try:
+        result = detector.predict_audio(audio, sr=16000, mode=payload.mode)
+        result["source_url"] = payload.url
+        result["source_filename"] = filename
+
         monitor.record_inference(
             prediction=result.get("prediction", "UNCERTAIN"),
             fake_probability=result.get("fake_probability", 0.5),
